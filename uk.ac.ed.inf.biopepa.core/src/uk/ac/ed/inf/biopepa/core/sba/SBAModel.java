@@ -24,7 +24,8 @@ public class SBAModel implements DynamicExpressionModelContext {
 			// componentCount++;
 			SBAReaction reaction = null;
 			SBAComponentBehaviour behaviour;
-			String name = node.getComponent(), compartmentName = null;
+			String name = node.getComponent();
+			String compartmentName = null;
 			CompartmentData compartment = node.getCompartment();
 			if (compartment != null) {
 				compartmentName = compartment.getName();
@@ -52,54 +53,78 @@ public class SBAModel implements DynamicExpressionModelContext {
 				reaction = new SBAReaction(reactionName, ce);
 				if (prefix instanceof ActionData) {
 					// ActionData objects represent an atomic action, unlike
-					// TransportData which will be broken down into two distinct
-					// reactions
+					// TransportData which will be broken down into two distinct reactions
 					ad = (ActionData) prefix;
-					if (ad.getLocations().size() > 0 && !ad.getLocations().contains(compartment.getName()))
+					if (ad.getLocations().size() > 0 && 
+							!ad.getLocations().contains(compartment.getName())){
 						continue;
-					behaviour = new SBAComponentBehaviour(name, compartmentName, prefix.getOperator());
+					}
+					behaviour = new SBAComponentBehaviour(name, compartmentName, 
+															prefix.getOperator());
 					behaviour.setStoichiometry((int) prefix.getStoichometry());
-					/*
-					 * reaction.addComponent(behaviour);
-					 * recordReaction(reaction);
-					 */
+					
+					reaction.addComponent(behaviour);
+					recordReaction(reaction);
+					
 				} else if (prefix instanceof TransportData) {
+					
+					
 					td = (TransportData) prefix;
 					if (compartmentName.equals(td.getSourceLocation())) {
 						behaviour = new SBAComponentBehaviour(name, compartmentName,
 								SBAComponentBehaviour.Type.REACTANT);
+						behaviour.setStoichiometry((int) prefix.getStoichometry());
 					} else if (compartmentName.equals(td.getTargetLocation())) {
 						behaviour = new SBAComponentBehaviour(name, td.getTargetLocation(),
 								SBAComponentBehaviour.Type.PRODUCT);
-					} else
+						behaviour.setStoichiometry((int) prefix.getStoichometry());
+					} else {
 						continue;
-					if (td.getOperator().equals(PrefixData.Operator.BI_TRANSPORTATION))
+					}
+					
+					if (td.getOperator().equals(PrefixData.Operator.BI_TRANSPORTATION)){
 						reaction.reversible = true;
+					}
 					reaction.transportation = td;
+					
+					reaction.addComponent(behaviour);
+					recordReaction(reaction);
+					
 					/*
 					 * Working version that creates uni-directional copies based
-					 * on source location td = (TransportData) prefix;
-					 * if(!compartmentName.equals(td.getSourceLocation()))
-					 * continue; behaviour = new SBAComponentBehaviour(name,
-					 * compartmentName, SBAComponentBehaviour.Type.REACTANT);
-					 * reaction.addComponent(behaviour); behaviour = new
-					 * SBAComponentBehaviour(name, td.getTargetLocation(),
-					 * SBAComponentBehaviour.Type.PRODUCT);
-					 * reaction.addComponent(behaviour);
-					 * recordReaction(reaction);
-					 * if(td.getOperator().equals(PrefixData
-					 * .Operator.BI_TRANSPORTATION)) { reaction = new
-					 * SBAReaction(reactionName, ce); behaviour = new
-					 * SBAComponentBehaviour(name, td.getTargetLocation(),
-					 * SBAComponentBehaviour.Type.REACTANT);
-					 * reaction.addComponent(behaviour); behaviour = new
-					 * SBAComponentBehaviour(name, compartmentName,
-					 * SBAComponentBehaviour.Type.PRODUCT);
-					 * reaction.addComponent(behaviour);
-					 * recordReaction(reaction); }
-					 */
-				} else
+					 * on source location
+					 *
+					td = (TransportData) prefix;
+					if(!compartmentName.equals(td.getSourceLocation())){
+						continue; 
+					}
+					behaviour = new SBAComponentBehaviour(name, 
+							                              compartmentName,
+							                              SBAComponentBehaviour.Type.REACTANT);
+					reaction.addComponent(behaviour);
+					behaviour = new SBAComponentBehaviour(name, 
+							                              td.getTargetLocation(),
+					                                      SBAComponentBehaviour.Type.PRODUCT);
+					reaction.addComponent(behaviour);
+					recordReaction(reaction);
+					
+					if(td.getOperator().equals(PrefixData.Operator.BI_TRANSPORTATION)) { 
+						reaction = new SBAReaction(reactionName, ce);
+						behaviour = new	SBAComponentBehaviour(name, 
+								                              td.getTargetLocation(),
+											                  SBAComponentBehaviour.Type.REACTANT);
+					    reaction.addComponent(behaviour);
+					    behaviour = new SBAComponentBehaviour(name,
+						      	                              compartmentName,
+					                                          SBAComponentBehaviour.Type.PRODUCT);
+					    reaction.addComponent(behaviour);
+					    recordReaction(reaction); 
+					}
+					*/
+					
+				} else {
 					throw new IllegalArgumentException("Unrecognised subclass of PrefixData.");
+				}
 				reaction.addComponent(behaviour);
 				recordReaction(reaction);
 			}
@@ -129,9 +154,22 @@ public class SBAModel implements DynamicExpressionModelContext {
 				if (actions.contains(action)) {
 					// Synchronized action
 					newList = new LinkedList<SBAReaction>();
-					for (SBAReaction one : left.get(action))
-						for (SBAReaction two : me.getValue())
-							newList.add(SBAReaction.merge(one, two));
+                                        /*
+					if (left == null){
+						System.out.println("left is indeed null\n");
+					}
+					if (action == null){
+						System.out.println("action is null\n");
+					}
+                                        */
+					List<SBAReaction>leftActions = left.get(action);
+					if (leftActions != null){
+					  for (SBAReaction one : left.get(action)){
+						  for (SBAReaction two : me.getValue()){
+							newList.addAll(SBAReaction.merge(one, two));
+						  }
+					  }
+					}
 					left.put(action, newList);
 
 				} else {
@@ -346,6 +384,7 @@ public class SBAModel implements DynamicExpressionModelContext {
 			if (vd.getUsage() > 1)
 				dontInline.add(vd.getName());
 		}
+		// Singleton reactions which do not need to be renamed
 		List<SBAReaction> lSBAR;
 		for (Map.Entry<String, List<SBAReaction>> me : sev.currentReactions.entrySet()) {
 			lSBAR = me.getValue();
@@ -359,6 +398,7 @@ public class SBAModel implements DynamicExpressionModelContext {
 		int[] intArray;
 		String name;
 		int i;
+		// Multiple reactions which require renaming.
 		for (Map.Entry<String, List<SBAReaction>> me : sev.currentReactions.entrySet()) {
 			lSBAR = me.getValue();
 			if (lSBAR.size() > 1 || lSBAR.get(0).isReversible()) {
@@ -389,8 +429,9 @@ public class SBAModel implements DynamicExpressionModelContext {
 						r.reversibleName = name + "_" + i++;
 						used.add(r.forwardName);
 						used.add(r.reversibleName);
-					} else
+					} else {
 						r.name = name + "_" + i++;
+					}
 					reactions.put(r.name, r);
 					used.add(r.name);
 				}
